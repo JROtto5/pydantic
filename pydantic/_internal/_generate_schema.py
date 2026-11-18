@@ -1378,10 +1378,11 @@ class GenerateSchema:
                 return maybe_schema
 
             origin: TypeAliasType = get_origin(obj) or obj
-            typevars_map = get_standard_typevars_map(obj)
 
             with self._ns_resolver.push(origin):
                 try:
+                    # Can raise `NameError` too, from a type parameter default that is evaluated lazily (PEP 695):
+                    typevars_map = get_standard_typevars_map(obj)
                     annotation = _typing_extra.eval_type(origin.__value__, *self._types_namespace)
                 except NameError as e:
                     raise PydanticUndefinedAnnotation.from_name_error(e) from e

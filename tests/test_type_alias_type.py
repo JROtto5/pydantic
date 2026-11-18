@@ -1,4 +1,5 @@
 import datetime
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Annotated, Generic, Literal, TypeVar, Union
@@ -356,6 +357,36 @@ def test_generic_type_alias_type_typevar_defaults() -> None:
         value: Triple[str, bool]
 
     assert Model(value=('a', 'true', ['b'])).value == ('a', True, ['b'])
+
+    # A missing type parameter without a default stays unparametrized (validated as `Any`), as before 2.14:
+    X = TypingExtensionsTypeVar('X')
+    Y = TypingExtensionsTypeVar('Y')
+    Pair = TypeAliasType('Pair', tuple[X, Y], type_params=(X, Y))
+    value = object()
+    assert TypeAdapter(Pair[int]).validate_python(('1', value)) == (1, value)
+
+
+@pytest.mark.skipif(sys.version_info < (3, 13), reason='Type parameter defaults syntax requires Python 3.13')
+def test_generic_type_alias_type_typevar_default_forward_ref(create_module) -> None:
+    """https://github.com/pydantic/pydantic/issues/14310"""
+    module = create_module(
+        """
+from pydantic import BaseModel
+
+type Pair[A, B = Later] = tuple[A, B]
+
+
+class Model(BaseModel):
+    value: Pair[str]
+
+
+Later = int
+"""
+    )
+
+    assert not module.Model.__pydantic_complete__
+    module.Model.model_rebuild()
+    assert module.Model(value=('a', '1')).value == ('a', 1)
 
 
 def test_redefined_type_alias():
