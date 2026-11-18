@@ -236,7 +236,21 @@ def get_standard_typevars_map(cls: Any) -> dict[TypeVar, Any] | None:
     # So it is safe to access cls.__args__ and origin.__parameters__
     args: tuple[Any, ...] = cls.__args__  # type: ignore
     parameters: tuple[TypeVar, ...] = origin.__parameters__
-    return dict(zip(parameters, args, strict=True))
+    typevars_map: dict[TypeVar, Any] = dict(zip(parameters[: len(args)], args, strict=True))
+
+    # A generic type alias can be parametrized with fewer arguments than it has type parameters
+    # if the trailing ones have a default (PEP 696). Unlike generic classes, the alias's
+    # `__args__` doesn't include these defaults, so fill them in here:
+    for param in parameters[len(args) :]:
+        try:
+            has_default = param.has_default()  # pyright: ignore[reportAttributeAccessIssue]
+        except AttributeError:
+            # Happens if using `typing.TypeVar` (and not `typing_extensions`) on Python < 3.13.
+            has_default = False
+        if has_default:
+            typevars_map[param] = replace_types(param.__default__, typevars_map)  # pyright: ignore[reportAttributeAccessIssue]
+
+    return typevars_map
 
 
 def get_model_typevars_map(cls: type[BaseModel]) -> dict[TypeVar, Any]:

@@ -6,6 +6,7 @@ from typing import Annotated, Generic, Literal, TypeVar, Union
 import pytest
 from annotated_types import MaxLen
 from typing_extensions import TypeAliasType
+from typing_extensions import TypeVar as TypingExtensionsTypeVar
 
 from pydantic import BaseModel, PlainSerializer, PydanticUserError, TypeAdapter, ValidationError, WithJsonSchema
 
@@ -336,6 +337,25 @@ def test_nested_generic_type_alias_type() -> None:
 
 def test_non_specified_generic_type_alias_type() -> None:
     assert TypeAdapter(MyList).json_schema() == {'items': {}, 'type': 'array'}
+
+
+def test_generic_type_alias_type_typevar_defaults() -> None:
+    """https://github.com/pydantic/pydantic/issues/14310"""
+    A = TypingExtensionsTypeVar('A')
+    B = TypingExtensionsTypeVar('B', default=int)
+    C = TypingExtensionsTypeVar('C', default=list[A])
+    Triple = TypeAliasType('Triple', tuple[A, B, C], type_params=(A, B, C))
+
+    ta = TypeAdapter(Triple[str])
+    assert ta.validate_python(('a', '1', ['b'])) == ('a', 1, ['b'])
+    with pytest.raises(ValidationError):
+        # The default of `C` refers to `A`, so it must be `list[str]`:
+        ta.validate_python(('a', 1, [1]))
+
+    class Model(BaseModel):
+        value: Triple[str, bool]
+
+    assert Model(value=('a', 'true', ['b'])).value == ('a', True, ['b'])
 
 
 def test_redefined_type_alias():
